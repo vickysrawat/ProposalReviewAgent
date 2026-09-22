@@ -8,6 +8,39 @@ public interface IReviewCheck
     IReadOnlyList<ReviewFinding> Run(ReviewContext context);
 }
 
+/// <summary>A named section of the draft, with its full text.</summary>
+public sealed record DraftSection
+{
+    public required string Name { get; init; }
+    public required string Text { get; init; }
+}
+
+/// <summary>Submission-format rules from the RFP (plan, section 11.4: format, page limits, deadlines).</summary>
+public sealed record SubmissionFormatRules
+{
+    /// <summary>Sections the client requires, by name.</summary>
+    public IReadOnlyList<string> RequiredSections { get; init; } = [];
+
+    /// <summary>Maximum page count, when the RFP sets one.</summary>
+    public int? MaxPages { get; init; }
+
+    /// <summary>Maximum word count, when the RFP sets one.</summary>
+    public int? MaxWords { get; init; }
+}
+
+/// <summary>
+/// A figure that must agree across artifacts (plan, estimate, narrative) —
+/// e.g. total effort hours, duration in weeks, team size.
+/// </summary>
+public sealed record ConsistencyFigure
+{
+    public required string Name { get; init; }
+
+    /// <summary>Artifact name → value, e.g. "plan" → 1200, "estimate" → 1500.</summary>
+    public IReadOnlyDictionary<string, double> Values { get; init; } =
+        new Dictionary<string, double>();
+}
+
 /// <summary>Everything the Review agent inspects for one proposal draft.</summary>
 public sealed record ReviewContext
 {
@@ -20,6 +53,19 @@ public sealed record ReviewContext
 
     /// <summary>Source IDs actually retrieved from the knowledge base for this run.</summary>
     public IReadOnlySet<string> RetrievedSourceIds { get; init; } = new HashSet<string>();
+
+    /// <summary>The draft's named sections and their text.</summary>
+    public IReadOnlyList<DraftSection> Sections { get; init; } = [];
+
+    /// <summary>Format rules the submission must satisfy.</summary>
+    public SubmissionFormatRules FormatRules { get; init; } = new();
+
+    /// <summary>Length of the current draft.</summary>
+    public int PageCount { get; init; }
+    public int WordCount { get; init; }
+
+    /// <summary>Figures that must agree across the plan, estimate and narrative.</summary>
+    public IReadOnlyList<ConsistencyFigure> ConsistencyFigures { get; init; } = [];
 }
 
 /// <summary>Result of one review pass over a draft.</summary>
@@ -70,6 +116,9 @@ public sealed class ProposalReviewPipeline
     {
         yield return new CoverageCheck();
         yield return new UnsupportedClaimCheck();
+        yield return new ContractualCommitmentCheck();
+        yield return new FormatComplianceCheck();
+        yield return new ConsistencyCheck();
     }
 
     private sealed class CoverageCheck : IReviewCheck

@@ -86,4 +86,47 @@ public class ProposalReviewPipelineTests
     {
         Assert.Equal(3, ProposalReviewPipeline.MaxIterations);
     }
+
+    [Fact]
+    public void Full_draft_runs_all_default_checks()
+    {
+        var pipeline = new ProposalReviewPipeline();
+        var context = new ReviewContext
+        {
+            RequirementCoverage = new Dictionary<string, bool>
+            {
+                ["REQ-1"] = true,
+                ["REQ-2"] = false,
+            },
+            Claims = ["We are ISO 27001 certified [kb-cert-iso27001]"],
+            RetrievedSourceIds = new HashSet<string> { "kb-cert-iso27001" },
+            Sections =
+            [
+                new DraftSection { Name = "Solution", Text = "We commit to a 99.9% SLA." },
+            ],
+            FormatRules = new SubmissionFormatRules
+            {
+                RequiredSections = ["Solution", "Commercials"],
+                MaxPages = 40,
+            },
+            PageCount = 12,
+            ConsistencyFigures =
+            [
+                new ConsistencyFigure
+                {
+                    Name = "total-effort-hours",
+                    Values = new Dictionary<string, double> { ["plan"] = 1200, ["estimate"] = 1500 },
+                },
+            ],
+        };
+
+        var report = pipeline.Review(context);
+
+        Assert.Contains(report.Findings, f => f.Kind == ReviewFindingKind.CoverageGap);
+        Assert.Contains(report.Findings, f => f.Kind == ReviewFindingKind.ContractualCommitment);
+        Assert.Contains(report.Findings, f => f.Kind == ReviewFindingKind.FormatViolation);
+        Assert.Contains(report.Findings, f => f.Kind == ReviewFindingKind.Inconsistency);
+        Assert.DoesNotContain(report.Findings, f => f.Kind == ReviewFindingKind.UnsupportedClaim);
+        Assert.True(report.HasCriticalFindings);
+    }
 }
