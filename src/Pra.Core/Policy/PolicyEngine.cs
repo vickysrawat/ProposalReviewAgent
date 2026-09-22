@@ -52,25 +52,52 @@ public sealed record ToolCallRequest
 public sealed class PolicyEngine
 {
     private readonly AgentRegistry _registry;
+    private readonly string? _auditPath;
     private readonly List<PolicyDecision> _decisionLog = [];
     private readonly object _logLock = new();
 
-    public PolicyEngine(AgentRegistry registry)
+    public PolicyEngine(AgentRegistry registry, string? auditPath = null)
     {
         _registry = registry;
+        _auditPath = auditPath;
     }
 
     public PolicyDecision Evaluate(ToolCallRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var agent = _registry.Get(request.AgentId);
-        var decision = EvaluateCore(agent, request);
+        using var span = Pra.Core.Telemetry.PraTelemetry.StartPolicyDecision(request.AgentId, request.ToolName);
+
+        PolicyDecision decision;
+
+        // An unregistered agent must never reach a tool — and its attempt must
+        // still become an audit record, not an exception (plan, section 8).
+        if (!_registry.TryGet(request.AgentId, out var agent))
+        {
+            decision = PolicyDecision.Block(request.AgentId, request.ToolName,
+                "Agent is not registered; unregistered agents cannot invoke tools.", "POL-TOOL-ALLOWLIST");
+        }
+        else if (IsOverRateLimit(agent))
+        {
+            decision = PolicyDecision.Block(agent.AgentId, request.ToolName,
+                $"Agent exceeded its blast-radius limit of {agent.Limits.MaxToolCallsPerMinute} tool calls per minute.");
+        }
+        else
+        {
+            decision = EvaluateCore(agent, request);
+        }
+
+        span?.SetTag("pra.policy.decision", decision.Kind.ToString());
 
         lock (_logLock)
         {
             _decisionLog.Add(decision);
         }
+
+        // A blocked or escalated call is also an audit record; when an audit
+        // path is configured it lands in append-only storage (plan, section 6).
+        if (_auditPath is not null)
+            Pra.Core.Persistence.JsonLinesStore.Append(_auditPath, decision);
 
         return decision;
     }
@@ -84,6 +111,21 @@ public sealed class PolicyEngine
             {
                 return _decisionLog.ToArray();
             }
+        }
+    }
+
+    private bool IsOverRateLimit(AgentRegistration agent)
+    {
+        var limit = agent.Limits.MaxToolCallsPerMinute;
+        if (limit <= 0)
+            return false;
+
+        var windowStart = DateTimeOffset.UtcNow.AddMinutes(-1);
+        lock (_logLock)
+        {
+            return _decisionLog.Count(d =>
+                d.AgentId.Equals(agent.AgentId, StringComparison.OrdinalIgnoreCase) &&
+                d.Timestamp >= windowStart) >= limit;
         }
     }
 

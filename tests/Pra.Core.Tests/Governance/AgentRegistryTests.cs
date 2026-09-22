@@ -34,6 +34,26 @@ public class AgentRegistryTests
     }
 
     [Fact]
+    public void Registry_persists_snapshot_and_reloads_across_instances()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"pra-registry-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var first = new AgentRegistry(snapshotPath: path);
+            first.Register(Sample());
+
+            var second = new AgentRegistry(snapshotPath: path);
+
+            Assert.True(second.TryGet("pra-core-reviewer", out var loaded));
+            Assert.Equal("Proposal Review Agent", loaded.DisplayName);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void Register_duplicate_agent_id_throws()
     {
         var registry = new AgentRegistry();

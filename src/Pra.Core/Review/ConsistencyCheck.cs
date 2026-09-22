@@ -4,14 +4,23 @@ namespace Pra.Core.Review;
 /// Checks that the plan, the estimate and the narrative agree with each other
 /// (plan, section 11.9). Each consistency figure is a keyed set of values from
 /// different artifacts (e.g. "total-effort-hours": plan = 1200, estimate = 1500);
-/// when the values disagree, the discrepancy is flagged instead of submitted.
+/// when the values diverge beyond the tolerance, the discrepancy is flagged
+/// instead of submitted. Tolerance defaults to 1% to absorb rounding from
+/// upstream artifacts; set it to 0 for exact matching.
 /// </summary>
 public sealed class ConsistencyCheck : IReviewCheck
 {
-    public ReviewFindingKind Kind => ReviewFindingKind.Inconsistency;
+    private readonly double _relativeTolerance;
 
-    /// <summary>Relative tolerance before two numeric values count as disagreeing.</summary>
-    private const double Tolerance = 0.0;
+    public ConsistencyCheck(double relativeTolerance = 0.01)
+    {
+        if (relativeTolerance < 0)
+            throw new ArgumentOutOfRangeException(nameof(relativeTolerance), relativeTolerance, "Tolerance cannot be negative.");
+
+        _relativeTolerance = relativeTolerance;
+    }
+
+    public ReviewFindingKind Kind => ReviewFindingKind.Inconsistency;
 
     public IReadOnlyList<ReviewFinding> Run(ReviewContext context)
     {
@@ -25,14 +34,10 @@ public sealed class ConsistencyCheck : IReviewCheck
             if (values.Count < 2)
                 continue;
 
-            var distinct = values.Values.Distinct().ToArray();
-            if (distinct.Length < 2)
-                continue;
-
             var max = values.Values.Max();
             var min = values.Values.Min();
 
-            if (Math.Abs(max - min) <= Tolerance * Math.Max(Math.Abs(max), Math.Abs(min)))
+            if (Agrees(max, min))
                 continue;
 
             var detail = string.Join(", ", values.Select(kv => $"{kv.Key} = {kv.Value}"));
@@ -46,5 +51,15 @@ public sealed class ConsistencyCheck : IReviewCheck
         }
 
         return findings;
+    }
+
+    private bool Agrees(double max, double min)
+    {
+        var spread = max - min;
+        var scale = Math.Max(Math.Abs(max), Math.Abs(min));
+
+        // Zero vs zero agrees; zero vs anything else agrees only within an
+        // absolute band of the tolerance (there is no scale to relate to).
+        return scale == 0 ? spread == 0 : spread <= _relativeTolerance * scale;
     }
 }

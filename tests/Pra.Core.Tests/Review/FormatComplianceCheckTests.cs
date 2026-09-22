@@ -89,4 +89,47 @@ public class FormatComplianceCheckTests
 
         Assert.Empty(_check.Run(context));
     }
+
+    [Fact]
+    public void Passed_submission_deadline_is_critical()
+    {
+        var context = new ReviewContext
+        {
+            FormatRules = new SubmissionFormatRules
+            {
+                SubmissionDeadline = DateOnly.FromDateTime(DateTime.UtcNow.Date.AddDays(-1)),
+            },
+        };
+
+        var finding = Assert.Single(_check.Run(context));
+        Assert.Equal(ReviewSeverity.Critical, finding.Severity);
+        Assert.Contains("deadline", finding.Description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Future_deadline_produces_no_finding()
+    {
+        var context = new ReviewContext
+        {
+            FormatRules = new SubmissionFormatRules
+            {
+                SubmissionDeadline = DateOnly.FromDateTime(DateTime.UtcNow.Date.AddDays(7)),
+            },
+        };
+
+        Assert.Empty(_check.Run(context));
+    }
+
+    [Fact]
+    public void Word_count_falls_back_to_section_text_when_not_set()
+    {
+        var context = new ReviewContext
+        {
+            FormatRules = new SubmissionFormatRules { MaxWords = 3 },
+            Sections = [new DraftSection { Name = "Solution", Text = "one two three four five" }],
+        };
+
+        var finding = Assert.Single(_check.Run(context));
+        Assert.Contains("5", finding.Description);
+    }
 }

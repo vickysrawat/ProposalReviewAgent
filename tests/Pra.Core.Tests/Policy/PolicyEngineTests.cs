@@ -134,4 +134,59 @@ public class PolicyEngineTests
         Assert.Equal(PolicyDecisionKind.Allow, engine.DecisionLog[0].Kind);
         Assert.Equal(PolicyDecisionKind.Block, engine.DecisionLog[1].Kind);
     }
+
+    [Fact]
+    public void Unregistered_agent_is_blocked_and_logged_not_thrown()
+    {
+        var engine = new PolicyEngine(new AgentRegistry());
+
+        var decision = engine.Evaluate(new ToolCallRequest { AgentId = "ghost", ToolName = "any" });
+
+        Assert.Equal(PolicyDecisionKind.Block, decision.Kind);
+        Assert.Single(engine.DecisionLog);
+    }
+
+    [Fact]
+    public void Agent_over_tool_call_rate_limit_is_blocked()
+    {
+        var registry = new AgentRegistry();
+        var agent = AgentWithTools(RiskTier.Low,
+            new ToolGrant { Name = "sharepoint.search", Scope = "read" });
+        agent = agent with { Limits = new AgentLimits { MaxToolCallsPerMinute = 3 } };
+        registry.Register(agent);
+        var engine = new PolicyEngine(registry);
+
+        for (var i = 0; i < 3; i++)
+            Assert.Equal(PolicyDecisionKind.Allow, engine.Evaluate(Call("sharepoint.search")).Kind);
+
+        var fourth = engine.Evaluate(Call("sharepoint.search"));
+
+        Assert.Equal(PolicyDecisionKind.Block, fourth.Kind);
+        Assert.Contains("blast-radius", fourth.Reason);
+    }
+
+    [Fact]
+    public void Decisions_are_appended_to_audit_file_when_configured()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"pra-audit-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var registry = new AgentRegistry();
+            registry.Register(AgentWithTools(RiskTier.Low,
+                new ToolGrant { Name = "sharepoint.search", Scope = "read" }));
+            var engine = new PolicyEngine(registry, auditPath: path);
+
+            engine.Evaluate(Call("sharepoint.search"));
+            engine.Evaluate(Call("email.send"));
+
+            var persisted = Pra.Core.Persistence.JsonLinesStore.ReadAll<PolicyDecision>(path);
+            Assert.Equal(2, persisted.Count);
+            Assert.Equal(PolicyDecisionKind.Allow, persisted[0].Kind);
+            Assert.Equal(PolicyDecisionKind.Block, persisted[1].Kind);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

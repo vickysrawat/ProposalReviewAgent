@@ -1,10 +1,10 @@
 namespace Pra.Core.Review;
 
 /// <summary>
-/// Checks submission-format rules (plan, section 11.9): required sections
-/// present, page limits respected. Missing mandatory format items are
-/// Critical — a format miss can disqualify the submission outright
-/// (plan, section 11.5: "Missed mandatory requirement → disqualification").
+/// Checks mandatory submission rules from the RFP (plan, sections 11.4 and
+/// 11.9): required sections present, page/word limits respected, submission
+/// deadline not already passed. Misses are Critical — a mandatory-format miss
+/// can disqualify the submission outright (plan, section 11.5).
 /// </summary>
 public sealed class FormatComplianceCheck : IReviewCheck
 {
@@ -44,16 +44,33 @@ public sealed class FormatComplianceCheck : IReviewCheck
             });
         }
 
-        if (rules.MaxWords is { } maxWords && context.WordCount > maxWords)
+        var wordCount = context.WordCount > 0
+            ? context.WordCount
+            : context.Sections.Sum(s => CountWords(s.Text));
+
+        if (rules.MaxWords is { } maxWords && wordCount > maxWords)
         {
             findings.Add(new ReviewFinding
             {
                 Kind = ReviewFindingKind.FormatViolation,
                 Severity = ReviewSeverity.Critical,
-                Description = $"Draft is {context.WordCount} words, exceeding the {maxWords}-word limit.",
+                Description = $"Draft is {wordCount} words, exceeding the {maxWords}-word limit.",
+            });
+        }
+
+        if (rules.SubmissionDeadline is { } deadline && deadline < DateOnly.FromDateTime(DateTime.UtcNow.Date))
+        {
+            findings.Add(new ReviewFinding
+            {
+                Kind = ReviewFindingKind.FormatViolation,
+                Severity = ReviewSeverity.Critical,
+                Description = $"Submission deadline {deadline:yyyy-MM-dd} has already passed; the draft cannot be submitted on time.",
             });
         }
 
         return findings;
     }
+
+    private static int CountWords(string text) =>
+        text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
 }

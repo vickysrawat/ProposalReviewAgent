@@ -63,4 +63,14 @@ public class ModelRouterTests
         Assert.Throws<KeyNotFoundException>(
             () => router.Resolve("ghost", ModelTaskClass.Parsing));
     }
+
+    [Fact]
+    public void No_matching_deployment_for_task_class_throws_instead_of_falling_back()
+    {
+        var router = new ModelRouter(RegistryWithModels("gpt-strong-pro"));
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => router.Resolve("pra-core-reviewer", ModelTaskClass.Parsing));
+        Assert.Contains("cheap", ex.Message);
+    }
 }

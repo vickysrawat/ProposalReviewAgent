@@ -75,6 +75,70 @@ public class ContractualCommitmentCheckTests
     }
 
     [Fact]
+    public void Findings_include_the_offending_sentence_and_section()
+    {
+        var context = new ReviewContext
+        {
+            Sections =
+            [
+                new DraftSection
+                {
+                    Name = "Solution",
+                    Text = "We deliver weekly. We commit to a 99.9% SLA. Our team is senior.",
+                },
+            ],
+        };
+
+        var finding = Assert.Single(_check.Run(context));
+        Assert.Equal("Solution", finding.Location);
+        Assert.Contains("99.9% SLA", finding.Description);
+        Assert.DoesNotContain("deliver weekly", finding.Description);
+    }
+
+    [Fact]
+    public void One_sentence_can_carry_multiple_commitment_categories()
+    {
+        var context = new ReviewContext
+        {
+            Sections =
+            [
+                new DraftSection
+                {
+                    Name = "Solution",
+                    Text = "We guarantee 99.9% uptime under the SLA.",
+                },
+            ],
+        };
+
+        var findings = _check.Run(context);
+
+        Assert.Equal(2, findings.Count);
+        Assert.All(findings, f => Assert.Equal("Solution", f.Location));
+    }
+
+    [Fact]
+    public void Each_committing_sentence_is_flagged_separately()
+    {
+        var context = new ReviewContext
+        {
+            Sections =
+            [
+                new DraftSection
+                {
+                    Name = "Terms",
+                    Text = "We guarantee response times. We accept penalties for delay.",
+                },
+            ],
+        };
+
+        var findings = _check.Run(context);
+
+        Assert.Equal(2, findings.Count);
+        Assert.Contains(findings, f => f.Description.Contains("guarantee"));
+        Assert.Contains(findings, f => f.Description.Contains("penalt"));
+    }
+
+    [Fact]
     public void Findings_are_warnings_not_critical()
     {
         var context = new ReviewContext

@@ -20,4 +20,28 @@ public class ClaimCitationCheckerTests
     {
         Assert.Null(ClaimCitationChecker.ExtractCitationMarker(claim));
     }
+
+    [Fact]
+    public void Last_bracket_span_wins_over_earlier_prose_brackets()
+    {
+        var claim = "See [Appendix B] for our ISO 27001 certification [kb-cert-iso27001]";
+
+        Assert.Equal("kb-cert-iso27001", ClaimCitationChecker.ExtractCitationMarker(claim));
+    }
+
+    [Fact]
+    public void Claim_with_prose_bracket_before_real_citation_is_not_flagged()
+    {
+        var findings = ClaimCitationChecker.FindUnsupportedClaims(
+            ["See [Appendix B] for details [kb-case-study]"],
+            new HashSet<string> { "kb-case-study" });
+
+        Assert.Empty(findings);
+    }
+
+    [Fact]
+    public void Unterminated_bracket_is_not_a_marker()
+    {
+        Assert.Null(ClaimCitationChecker.ExtractCitationMarker("Dangling [bracket"));
+    }
 }

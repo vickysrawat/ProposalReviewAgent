@@ -73,4 +73,55 @@ public class ConsistencyCheckTests
 
         Assert.Empty(_check.Run(context));
     }
+
+    [Fact]
+    public void Rounding_differences_within_default_tolerance_are_not_flagged()
+    {
+        var context = new ReviewContext
+        {
+            ConsistencyFigures =
+            [
+                new ConsistencyFigure
+                {
+                    Name = "total-effort-hours",
+                    Values = new Dictionary<string, double>
+                    {
+                        ["plan"] = 1200,
+                        ["estimate"] = 1200.4,
+                    },
+                },
+            ],
+        };
+
+        Assert.Empty(_check.Run(context));
+    }
+
+    [Fact]
+    public void Zero_tolerance_restores_exact_matching()
+    {
+        var strict = new ConsistencyCheck(relativeTolerance: 0);
+        var context = new ReviewContext
+        {
+            ConsistencyFigures =
+            [
+                new ConsistencyFigure
+                {
+                    Name = "total-effort-hours",
+                    Values = new Dictionary<string, double>
+                    {
+                        ["plan"] = 1200,
+                        ["estimate"] = 1200.4,
+                    },
+                },
+            ],
+        };
+
+        Assert.Single(strict.Run(context));
+    }
+
+    [Fact]
+    public void Negative_tolerance_is_rejected()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ConsistencyCheck(-0.1));
+    }
 }

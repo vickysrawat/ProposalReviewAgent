@@ -43,6 +43,8 @@ public sealed class ModelRouter
         var match = agent.Models.FirstOrDefault(
             m => m.Deployment.Contains(tier, StringComparison.OrdinalIgnoreCase));
 
-        return match ?? agent.Models[0];
+        return match ?? throw new InvalidOperationException(
+            $"Agent '{agentId}' has no approved '{tier}' deployment for task class {taskClass}. " +
+            "Register a matching deployment; the router never falls back to an arbitrary model.");
     }
 }

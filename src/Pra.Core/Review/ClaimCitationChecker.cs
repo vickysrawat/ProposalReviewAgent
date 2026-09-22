@@ -10,7 +10,9 @@ public static class ClaimCitationChecker
     /// <summary>
     /// Flags claims whose citation marker does not resolve against the set of
     /// citations retrieved from the knowledge base. Claims are expected to
-    /// carry a citation marker of the form [source-id].
+    /// carry a citation marker of the form [source-id]; when a claim carries
+    /// several bracketed spans, the last one is the citation and earlier ones
+    /// are treated as ordinary text (e.g. cross-references like [Appendix B]).
     /// </summary>
     public static IReadOnlyList<ReviewFinding> FindUnsupportedClaims(
         IEnumerable<string> claims,
@@ -51,15 +53,35 @@ public static class ClaimCitationChecker
         return findings;
     }
 
-    /// <summary>Extracts the first [source-id] citation marker from a claim, if present.</summary>
+    /// <summary>
+    /// Extracts the citation marker from a claim: the last non-empty
+    /// [source-id] span, so prose brackets like [Appendix B] before the real
+    /// citation do not mask it. Returns null when there is no usable marker.
+    /// </summary>
     public static string? ExtractCitationMarker(string claim)
     {
-        var open = claim.IndexOf('[', StringComparison.Ordinal);
-        var close = open >= 0 ? claim.IndexOf(']', open + 1) : -1;
+        ArgumentNullException.ThrowIfNull(claim);
 
-        if (open < 0 || close <= open + 1)
-            return null;
+        string? marker = null;
+        var index = 0;
 
-        return claim.Substring(open + 1, close - open - 1).Trim();
+        while (index < claim.Length)
+        {
+            var open = claim.IndexOf('[', index);
+            if (open < 0)
+                break;
+
+            var close = claim.IndexOf(']', open + 1);
+            if (close < 0)
+                break;
+
+            var candidate = claim.Substring(open + 1, close - open - 1).Trim();
+            if (candidate.Length > 0)
+                marker = candidate;
+
+            index = close + 1;
+        }
+
+        return marker;
     }
 }

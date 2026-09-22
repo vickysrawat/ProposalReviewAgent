@@ -26,6 +26,9 @@ public sealed record SubmissionFormatRules
 
     /// <summary>Maximum word count, when the RFP sets one.</summary>
     public int? MaxWords { get; init; }
+
+    /// <summary>Client submission deadline; a passed deadline is a mandatory-format miss.</summary>
+    public DateOnly? SubmissionDeadline { get; init; }
 }
 
 /// <summary>
@@ -101,6 +104,8 @@ public sealed class ProposalReviewPipeline
     public ReviewReport Review(ReviewContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
+
+        using var span = Pra.Core.Telemetry.PraTelemetry.StartReviewPass();
 
         var findings = _checks.SelectMany(c => c.Run(context)).ToArray();
 
